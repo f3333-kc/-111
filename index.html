@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>护航单后台</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="loginView" class="login-shell">
+      <div class="login-card">
+        <h1>护航单后台</h1>
+        <p class="login-subtitle">管理员登录</p>
+
+        <form id="loginForm">
+          <label>
+            <span>用户名</span>
+            <input id="username" type="text" autocomplete="username" required />
+          </label>
+
+          <label>
+            <span>密码</span>
+            <input id="password" type="password" autocomplete="current-password" required />
+          </label>
+
+          <button type="submit" id="loginBtn" class="primary-btn login-btn">登录</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="appView" class="app-shell hidden">
+      <header class="topbar">
+        <div class="brand-wrap">
+          <div class="brand">护航单后台</div>
+          <div class="status-pill">在线模式 · 统一数据</div>
+        </div>
+        <nav class="nav" aria-label="主导航">
+          <button class="nav-btn active" data-page="dashboard">首页</button>
+          <button class="nav-btn" data-page="add-order">新增订单</button>
+          <button class="nav-btn" data-page="order-list">订单列表</button>
+          <button id="logoutBtn" class="nav-btn warning" type="button">退出</button>
+        </nav>
+      </header>
+
+      <main class="content">
+        <section id="dashboard" class="page">
+          <div class="summary-grid">
+            <div class="summary-card">
+              <span class="label">总单数</span>
+              <strong id="total-orders">0</strong>
+            </div>
+            <div class="summary-card accent">
+              <span class="label">总营收</span>
+              <strong id="total-amount">¥0</strong>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h2>统计汇总</h2>
+              <div class="segment-control" aria-label="统计维度切换">
+                <button class="tab-btn active" data-type="playerName">按打手</button>
+                <button class="tab-btn" data-type="customerName">按客户</button>
+                <button class="tab-btn" data-type="playType">按玩法</button>
+              </div>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>名称</th>
+                    <th>单数</th>
+                    <th>金额</th>
+                  </tr>
+                </thead>
+                <tbody id="summaryTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="add-order" class="page hidden">
+          <div class="panel">
+            <div class="panel-header">
+              <h2 id="formTitle">新增订单</h2>
+            </div>
+
+            <form id="orderForm" class="order-form">
+              <div class="form-grid">
+                <label>
+                  <span>打手名</span>
+                  <input id="playerName" type="text" list="playerOptions" placeholder="例如：张三" />
+                </label>
+
+                <label>
+                  <span>客户名</span>
+                  <input id="customerName" type="text" placeholder="例如：王老板" />
+                </label>
+
+                <label>
+                  <span>金额</span>
+                  <input id="amount" type="number" min="0" step="0.01" placeholder="例如：1500" />
+                </label>
+
+                <label>
+                  <span>玩法</span>
+                  <input id="playType" type="text" list="playTypeOptions" placeholder="例如：大坝单保" />
+                </label>
+
+                <label class="full-width">
+                  <span>备注（可选）</span>
+                  <input id="remark" type="text" placeholder="可填写说明" />
+                </label>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="primary-btn" id="submitBtn">保存订单</button>
+                <button type="button" class="secondary-btn" id="cancelEditBtn">取消编辑</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section id="order-list" class="page hidden">
+          <div class="panel">
+            <div class="panel-header">
+              <h2>订单列表</h2>
+            </div>
+
+            <div class="filter-bar">
+              <select id="filter-player">
+                <option value="">全部打手</option>
+              </select>
+              <select id="filter-customer">
+                <option value="">全部客户</option>
+              </select>
+              <select id="filter-playType">
+                <option value="">全部玩法</option>
+              </select>
+              <button id="clearFilter" class="secondary-btn" type="button">清空筛选</button>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>打手</th>
+                    <th>客户</th>
+                    <th>金额</th>
+                    <th>玩法</th>
+                    <th>时间</th>
+                    <th>备注</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="orderTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <datalist id="playerOptions"></datalist>
+    <datalist id="playTypeOptions"></datalist>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

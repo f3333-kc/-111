@@ -1,0 +1,12 @@
+node_modules
+dist
+tests
+.git
+.env
+.env.*
+!.env.example
+guard.db
+data.json
+*.sqlite
+*.sqlite3
+npm-debug.log
