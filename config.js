@@ -6,7 +6,8 @@ function resolveApiBaseUrl(value = '') {
     return DEFAULT_API_URL;
   }
 
-  return candidate.replace(/\/+$/, '');
+  const normalized = candidate.replace(/\/+$/, '');
+  return normalized || DEFAULT_API_URL;
 }
 
 function getBrowserApiBaseUrl() {
