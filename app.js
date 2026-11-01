@@ -5,7 +5,11 @@ const state = {
   editingOrderId: null,
   orders: [],
   players: [],
-  playTypes: []
+  playTypes: [],
+  dateFrom: '',
+  dateTo: '',
+  currentPage: 1,
+  pageSize: 10
 };
 
 function apiUrl(path = '/') {
@@ -96,9 +100,43 @@ function bindEvents() {
   document.getElementById('orderForm').addEventListener('submit', handleOrderSubmit);
   document.getElementById('clearFilter').addEventListener('click', clearFilters);
   document.getElementById('cancelEditBtn').addEventListener('click', resetForm);
-  document.getElementById('filter-player').addEventListener('change', renderOrderList);
-  document.getElementById('filter-customer').addEventListener('change', renderOrderList);
-  document.getElementById('filter-playType').addEventListener('change', renderOrderList);
+  document.getElementById('filter-player').addEventListener('change', () => {
+    state.currentPage = 1;
+    renderOrderList();
+  });
+  document.getElementById('filter-customer').addEventListener('change', () => {
+    state.currentPage = 1;
+    renderOrderList();
+  });
+  document.getElementById('filter-playType').addEventListener('change', () => {
+    state.currentPage = 1;
+    renderOrderList();
+  });
+  document.getElementById('filter-start-date').addEventListener('change', () => {
+    state.dateFrom = document.getElementById('filter-start-date').value;
+    state.currentPage = 1;
+    renderOrderList();
+  });
+  document.getElementById('filter-end-date').addEventListener('change', () => {
+    state.dateTo = document.getElementById('filter-end-date').value;
+    state.currentPage = 1;
+    renderOrderList();
+  });
+  document.getElementById('exportCsvBtn').addEventListener('click', exportCurrentOrdersCsv);
+  document.getElementById('prevPageBtn').addEventListener('click', () => {
+    if (state.currentPage > 1) {
+      state.currentPage -= 1;
+      renderOrderList();
+    }
+  });
+  document.getElementById('nextPageBtn').addEventListener('click', () => {
+    const filtered = getFilteredOrders();
+    const totalPages = Math.max(1, Math.ceil(filtered.length / state.pageSize));
+    if (state.currentPage < totalPages) {
+      state.currentPage += 1;
+      renderOrderList();
+    }
+  });
 
   document.body.addEventListener('click', async (event) => {
     const editButton = event.target.closest('.edit-btn');
@@ -245,6 +283,8 @@ function renderFilters() {
   setSelectOptions('filter-player', state.players || [], '全部打手');
   setSelectOptions('filter-customer', [...new Set((state.orders || []).map((order) => order.customer_name || '').filter(Boolean))], '全部客户');
   setSelectOptions('filter-playType', state.playTypes || [], '全部玩法');
+  document.getElementById('filter-start-date').value = state.dateFrom;
+  document.getElementById('filter-end-date').value = state.dateTo;
 }
 
 function setSelectOptions(elementId, values, defaultLabel) {
@@ -272,12 +312,97 @@ function setSelectOptions(elementId, values, defaultLabel) {
   }
 }
 
+function parseDateLike(value) {
+  if (!value) return null;
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const normalized = raw
+    .replace(/年/g, '-')
+    .replace(/月/g, '-')
+    .replace(/日/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function withinDateRange(orderValue, fromValue, toValue) {
+  const orderDate = parseDateLike(orderValue);
+  if (!orderDate) return false;
+
+  if (fromValue) {
+    const fromDate = parseDateLike(fromValue);
+    if (fromDate && orderDate < new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate())) {
+      return false;
+    }
+  }
+
+  if (toValue) {
+    const toDate = parseDateLike(toValue);
+    if (toDate) {
+      const endOfDay = new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate(), 23, 59, 59, 999);
+      if (orderDate > endOfDay) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function getFilteredOrders() {
+  const player = document.getElementById('filter-player').value;
+  const customer = document.getElementById('filter-customer').value;
+  const playType = document.getElementById('filter-playType').value;
+  const fromDate = state.dateFrom || document.getElementById('filter-start-date').value;
+  const toDate = state.dateTo || document.getElementById('filter-end-date').value;
+
+  return (state.orders || []).filter((order) => {
+    const matchPlayer = !player || order.player_name === player;
+    const matchCustomer = !customer || order.customer_name === customer;
+    const matchPlayType = !playType || order.play_type === playType;
+    const matchDate = withinDateRange(order.created_at, fromDate, toDate);
+    return matchPlayer && matchCustomer && matchPlayType && matchDate;
+  });
+}
+
+function renderPagination(totalPages, totalCount) {
+  const pageInfo = document.getElementById('pageInfo');
+  const prevPageBtn = document.getElementById('prevPageBtn');
+  const nextPageBtn = document.getElementById('nextPageBtn');
+
+  if (pageInfo) {
+    pageInfo.textContent = `${state.currentPage} / ${totalPages}`;
+  }
+
+  if (prevPageBtn) {
+    prevPageBtn.disabled = state.currentPage <= 1;
+  }
+
+  if (nextPageBtn) {
+    nextPageBtn.disabled = state.currentPage >= totalPages || totalCount === 0;
+  }
+}
+
 function renderOrderList() {
   const filtered = getFilteredOrders();
+  const totalPages = Math.max(1, Math.ceil(filtered.length / state.pageSize));
+  if (state.currentPage > totalPages) {
+    state.currentPage = totalPages;
+  }
+
+  const startIndex = (state.currentPage - 1) * state.pageSize;
+  const pagedOrders = filtered.slice(startIndex, startIndex + state.pageSize);
+
   const tbody = document.getElementById('orderTableBody');
   tbody.replaceChildren();
 
-  if (!filtered.length) {
+  renderPagination(totalPages, filtered.length);
+
+  if (!pagedOrders.length) {
     const row = document.createElement('tr');
     const cell = document.createElement('td');
     cell.colSpan = 7;
@@ -288,7 +413,7 @@ function renderOrderList() {
     return;
   }
 
-  filtered
+  pagedOrders
     .slice()
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
     .forEach((order) => {
@@ -329,6 +454,35 @@ function renderOrderList() {
 
       tbody.appendChild(row);
     });
+}
+
+function escapeCsv(value) {
+  const escaped = String(value ?? '').replace(/"/g, '""');
+  return `"${escaped}"`;
+}
+
+function exportCurrentOrdersCsv() {
+  const filtered = getFilteredOrders().slice().sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  const rows = [
+    ['打手', '客户', '金额', '玩法', '时间', '备注'],
+    ...filtered.map((order) => [
+      order.player_name || '',
+      order.customer_name || '',
+      Number(order.amount || 0),
+      order.play_type || '',
+      order.created_at || '',
+      order.remark || ''
+    ])
+  ];
+
+  const csvContent = `\uFEFF${rows.map((row) => row.map(escapeCsv).join(',')).join('\n')}`;
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const fileUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = fileUrl;
+  link.download = 'orders.csv';
+  link.click();
+  URL.revokeObjectURL(fileUrl);
 }
 
 async function handleOrderSubmit(event) {
@@ -404,20 +558,12 @@ function clearFilters() {
   document.getElementById('filter-player').value = '';
   document.getElementById('filter-customer').value = '';
   document.getElementById('filter-playType').value = '';
+  document.getElementById('filter-start-date').value = '';
+  document.getElementById('filter-end-date').value = '';
+  state.dateFrom = '';
+  state.dateTo = '';
+  state.currentPage = 1;
   renderOrderList();
-}
-
-function getFilteredOrders() {
-  const player = document.getElementById('filter-player').value;
-  const customer = document.getElementById('filter-customer').value;
-  const playType = document.getElementById('filter-playType').value;
-
-  return (state.orders || []).filter((order) => {
-    const matchPlayer = !player || order.player_name === player;
-    const matchCustomer = !customer || order.customer_name === customer;
-    const matchPlayType = !playType || order.play_type === playType;
-    return matchPlayer && matchCustomer && matchPlayType;
-  });
 }
 
 function clearSession() {
