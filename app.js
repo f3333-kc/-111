@@ -164,7 +164,9 @@ function fetchJson(url, options = {}) {
   const requestUrl = url.startsWith('http') ? url : apiUrl(url);
 
   return fetch(requestUrl, { ...options, headers }).then(async (response) => {
-    const data = await response.json().catch(() => ({}));
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json') ? await response.json().catch(() => ({})) : {};
+
     if (!response.ok) {
       if (response.status === 401 && state.token) {
         clearSession();
@@ -194,32 +196,49 @@ function renderDashboard(stats = null) {
   if (state.summaryType === 'playType') rows = summary.byPlayType || [];
 
   const tbody = document.getElementById('summaryTableBody');
-  tbody.innerHTML = '';
+  tbody.replaceChildren();
 
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="3" class="empty-state">暂无数据</td></tr>';
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 3;
+    cell.className = 'empty-state';
+    cell.textContent = '暂无数据';
+    row.appendChild(cell);
+    tbody.appendChild(row);
     return;
   }
 
   rows.forEach((item) => {
     const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${escapeHtml(item.name || '未知')}</td>
-      <td>${item.count || 0}</td>
-      <td>${formatMoney(item.total || 0)}</td>
-    `;
+    const nameCell = document.createElement('td');
+    const countCell = document.createElement('td');
+    const totalCell = document.createElement('td');
+
+    nameCell.textContent = item.name || '未知';
+    countCell.textContent = String(item.count || 0);
+    totalCell.textContent = formatMoney(item.total || 0);
+
+    row.appendChild(nameCell);
+    row.appendChild(countCell);
+    row.appendChild(totalCell);
     tbody.appendChild(row);
   });
 }
 
 function renderFormOptions() {
-  document.getElementById('playerOptions').innerHTML = (state.players || [])
-    .map((item) => `<option value="${escapeHtml(item)}"></option>`)
-    .join('');
+  fillDatalist('playerOptions', state.players || []);
+  fillDatalist('playTypeOptions', state.playTypes || []);
+}
 
-  document.getElementById('playTypeOptions').innerHTML = (state.playTypes || [])
-    .map((item) => `<option value="${escapeHtml(item)}"></option>`)
-    .join('');
+function fillDatalist(id, values) {
+  const datalist = document.getElementById(id);
+  datalist.replaceChildren();
+  (values || []).forEach((value) => {
+    const option = document.createElement('option');
+    option.value = String(value);
+    datalist.appendChild(option);
+  });
 }
 
 function renderFilters() {
@@ -233,9 +252,20 @@ function setSelectOptions(elementId, values, defaultLabel) {
   const currentValue = select.value;
   const uniqueValues = [...new Set((values || []).filter(Boolean))];
 
-  select.innerHTML = `<option value="">${defaultLabel}</option>` + uniqueValues
-    .map((value) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`)
-    .join('');
+  const fragment = document.createDocumentFragment();
+  const defaultOption = document.createElement('option');
+  defaultOption.value = '';
+  defaultOption.textContent = defaultLabel;
+  fragment.appendChild(defaultOption);
+
+  uniqueValues.forEach((value) => {
+    const option = document.createElement('option');
+    option.value = String(value);
+    option.textContent = String(value);
+    fragment.appendChild(option);
+  });
+
+  select.replaceChildren(fragment);
 
   if (uniqueValues.includes(currentValue)) {
     select.value = currentValue;
@@ -245,10 +275,16 @@ function setSelectOptions(elementId, values, defaultLabel) {
 function renderOrderList() {
   const filtered = getFilteredOrders();
   const tbody = document.getElementById('orderTableBody');
-  tbody.innerHTML = '';
+  tbody.replaceChildren();
 
   if (!filtered.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">暂无订单数据</td></tr>';
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 7;
+    cell.className = 'empty-state';
+    cell.textContent = '暂无订单数据';
+    row.appendChild(cell);
+    tbody.appendChild(row);
     return;
   }
 
@@ -257,18 +293,40 @@ function renderOrderList() {
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
     .forEach((order) => {
       const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${escapeHtml(order.player_name || '')}</td>
-        <td>${escapeHtml(order.customer_name || '')}</td>
-        <td>${formatMoney(order.amount || 0)}</td>
-        <td>${escapeHtml(order.play_type || '')}</td>
-        <td>${escapeHtml(order.created_at || '')}</td>
-        <td>${escapeHtml(order.remark || '')}</td>
-        <td>
-          <button class="edit-btn" data-id="${order.id}" type="button">编辑</button>
-          <button class="delete-btn" data-id="${order.id}" type="button">删除</button>
-        </td>
-      `;
+      const cells = [
+        order.player_name || '',
+        order.customer_name || '',
+        formatMoney(order.amount || 0),
+        order.play_type || '',
+        order.created_at || '',
+        order.remark || '',
+        ''
+      ];
+
+      cells.forEach((value, index) => {
+        const cell = document.createElement('td');
+        if (index === 6) {
+          const editBtn = document.createElement('button');
+          editBtn.type = 'button';
+          editBtn.className = 'edit-btn';
+          editBtn.dataset.id = String(order.id);
+          editBtn.textContent = '编辑';
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.type = 'button';
+          deleteBtn.className = 'delete-btn';
+          deleteBtn.dataset.id = String(order.id);
+          deleteBtn.textContent = '删除';
+
+          cell.appendChild(editBtn);
+          cell.appendChild(deleteBtn);
+        } else {
+          cell.textContent = String(value);
+        }
+
+        row.appendChild(cell);
+      });
+
       tbody.appendChild(row);
     });
 }
