@@ -8,14 +8,22 @@ const jwt = require('jsonwebtoken');
 const sqlite3 = require('sqlite3').verbose();
 const { Pool } = require('pg');
 
+const DEFAULT_ADMIN_USERNAME = 'admin';
+const DEFAULT_ADMIN_PASSWORD = 'admin123';
+const DEFAULT_JWT_SECRET = 'local-development-secret';
+
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'local-development-secret';
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || DEFAULT_ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'guard.db');
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const LEGACY_DATA_FILE = path.join(__dirname, 'data.json');
+
+function isProductionMode(env = process.env) {
+  return env.NODE_ENV === 'production';
+}
 
 function resolveDatabaseMode() {
   return (process.env.DATABASE_URL || DATABASE_URL) ? 'postgres' : 'sqlite';
@@ -24,13 +32,11 @@ function resolveDatabaseMode() {
 let sqliteDb = null;
 let postgresPool = null;
 
-if (resolveDatabaseMode() === 'sqlite') {
-  sqliteDb = new sqlite3.Database(DB_PATH, (error) => {
-    if (error) {
-      console.error('Database connection failed:', error.message);
-    }
-  });
-} else {
+function ensurePostgresPool() {
+  if (postgresPool) {
+    return postgresPool;
+  }
+
   postgresPool = new Pool({
     connectionString: DATABASE_URL,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
@@ -39,6 +45,28 @@ if (resolveDatabaseMode() === 'sqlite') {
   postgresPool.on('error', (error) => {
     console.error('Postgres pool error:', error.message);
   });
+
+  return postgresPool;
+}
+
+function ensureSqliteDatabase() {
+  if (sqliteDb) {
+    return sqliteDb;
+  }
+
+  sqliteDb = new sqlite3.Database(DB_PATH, (error) => {
+    if (error) {
+      console.error('Database connection failed:', error.message);
+    }
+  });
+
+  return sqliteDb;
+}
+
+if (resolveDatabaseMode() === 'sqlite') {
+  ensureSqliteDatabase();
+} else {
+  ensurePostgresPool();
 }
 
 const DEFAULT_PLAY_TYPES = [
@@ -104,11 +132,12 @@ function getDefaultData() {
 
 function readDbAsync(sql, params = []) {
   if (resolveDatabaseMode() === 'postgres') {
-    return postgresPool.query(sql, params).then((result) => result.rows);
+    return ensurePostgresPool().query(sql, params).then((result) => result.rows);
   }
 
+  const db = ensureSqliteDatabase();
   return new Promise((resolve, reject) => {
-    sqliteDb.all(sql, params, (error, rows) => {
+    db.all(sql, params, (error, rows) => {
       if (error) {
         reject(error);
         return;
@@ -120,14 +149,15 @@ function readDbAsync(sql, params = []) {
 
 function runDbAsync(sql, params = []) {
   if (resolveDatabaseMode() === 'postgres') {
-    return postgresPool.query(sql, params).then((result) => ({
+    return ensurePostgresPool().query(sql, params).then((result) => ({
       id: result.rows[0]?.id ?? null,
       changes: result.rowCount ?? 0
     }));
   }
 
+  const db = ensureSqliteDatabase();
   return new Promise((resolve, reject) => {
-    sqliteDb.run(sql, params, function onRun(error) {
+    db.run(sql, params, function onRun(error) {
       if (error) {
         reject(error);
         return;
@@ -184,7 +214,7 @@ async function migrateLegacyJson() {
 
 async function initializeDatabase() {
   if (resolveDatabaseMode() === 'postgres') {
-    await postgresPool.query(`
+    await ensurePostgresPool().query(`
       CREATE TABLE IF NOT EXISTS orders (
         id SERIAL PRIMARY KEY,
         player_name TEXT,
@@ -200,7 +230,7 @@ async function initializeDatabase() {
   }
 
   await new Promise((resolve, reject) => {
-    sqliteDb.exec(`
+    ensureSqliteDatabase().exec(`
       CREATE TABLE IF NOT EXISTS orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         player_name TEXT,
@@ -223,19 +253,23 @@ async function initializeDatabase() {
 }
 
 function validateStartupConfiguration(env = process.env) {
-  if (env.NODE_ENV !== 'production') {
+  if (!isProductionMode(env)) {
     return;
   }
 
   const missing = [];
-  if (!env.ADMIN_USERNAME || env.ADMIN_USERNAME === 'admin') missing.push('ADMIN_USERNAME');
-  if (!env.ADMIN_PASSWORD || env.ADMIN_PASSWORD.length < 12 || env.ADMIN_PASSWORD === 'admin123') {
-    missing.push('ADMIN_PASSWORD (at least 12 characters)');
+  if (!env.ADMIN_USERNAME || !String(env.ADMIN_USERNAME).trim()) {
+    missing.push('ADMIN_USERNAME');
   }
-  if (!env.JWT_SECRET || env.JWT_SECRET.length < 32 || env.JWT_SECRET === 'guard-admin-secret') {
-    missing.push('JWT_SECRET (at least 32 characters)');
+  if (!env.ADMIN_PASSWORD || env.ADMIN_PASSWORD.length < 12 || env.ADMIN_PASSWORD === DEFAULT_ADMIN_PASSWORD) {
+    missing.push('ADMIN_PASSWORD (at least 12 characters and not the default value)');
   }
-  if (!env.DATABASE_URL) missing.push('DATABASE_URL (persistent PostgreSQL database)');
+  if (!env.JWT_SECRET || env.JWT_SECRET.length < 32 || env.JWT_SECRET === DEFAULT_JWT_SECRET) {
+    missing.push('JWT_SECRET (at least 32 characters and not the default value)');
+  }
+  if (!env.DATABASE_URL || !String(env.DATABASE_URL).trim()) {
+    missing.push('DATABASE_URL (persistent PostgreSQL database)');
+  }
 
   if (missing.length) {
     throw new Error(`Production configuration is incomplete: ${missing.join(', ')}`);
@@ -467,8 +501,12 @@ module.exports = {
   getDefaultData,
   validateStartupConfiguration,
   DEFAULT_PLAY_TYPES,
+  DEFAULT_ADMIN_USERNAME,
+  DEFAULT_ADMIN_PASSWORD,
+  DEFAULT_JWT_SECRET,
   ADMIN_USERNAME,
   ADMIN_PASSWORD,
   PORT,
-  DATABASE_URL
+  DATABASE_URL,
+  isProductionMode
 };
